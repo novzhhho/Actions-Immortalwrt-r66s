@@ -3,7 +3,8 @@ name: Build ImmortalWrt R66S
 on:
   workflow_dispatch:
   push:
-
+    branches:
+      - v1.0
 
 jobs:
   build:
