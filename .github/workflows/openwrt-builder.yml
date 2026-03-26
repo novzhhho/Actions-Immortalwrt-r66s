@@ -73,7 +73,7 @@ jobs:
 
       - name: Load custom config
         run: |
-          cp ../seed.config .config
+          cp seed.config openwrt/.config
 
       - name: Defconfig
         run: |
