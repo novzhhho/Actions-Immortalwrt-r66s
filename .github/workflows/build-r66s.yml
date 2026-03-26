@@ -7,8 +7,90 @@ on:
       - v1.0
 
 jobs:
-  test:
-    runs-on: ubuntu-latest
+  build:
+    runs-on: ubuntu-22.04
+
+    env:
+      TZ: Asia/Shanghai
+
     steps:
-      - name: Show branch
-        run: echo "workflow works on v1.0"
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Free disk space aggressively
+        run: |
+          echo "=== Before cleanup ==="
+          df -h
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /usr/local/lib/android
+          sudo rm -rf /opt/ghc
+          sudo rm -rf /usr/local/.ghcup
+          sudo rm -rf /opt/hostedtoolcache
+          sudo rm -rf /usr/lib/jvm
+          sudo apt-get clean
+          sudo docker system prune -af || true
+          echo "=== After cleanup ==="
+          df -h
+
+      - name: Initialization environment
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            ack antlr3 asciidoc autoconf automake autopoint binutils bison build-essential \
+            ccache clang cmake cpio curl device-tree-compiler flex gawk gettext gcc-multilib \
+            g++-multilib genisoimage git gperf haveged help2man intltool libc6-dev-i386 \
+            libelf-dev libfuse-dev libglib2.0-dev libgmp3-dev libltdl-dev libmpc-dev \
+            libmpfr-dev libncurses5-dev libncursesw5-dev libpython3-dev libreadline-dev \
+            libssl-dev libtool lrzsz msmtp ninja-build p7zip p7zip-full patch pkgconf \
+            python3 python3-pyelftools python3-setuptools qemu-utils rsync scons \
+            squashfs-tools subversion swig texinfo uglifyjs unzip vim wget xxd zlib1g-dev
+
+      - name: Clone source code
+        run: |
+          git clone --depth=1 https://github.com/immortalwrt/immortalwrt openwrt
+
+      - name: Add custom feeds
+        run: |
+          cd openwrt
+          echo "" >> feeds.conf.default
+          echo "src-git nas https://github.com/linkease/nas-packages.git;master" >> feeds.conf.default
+          echo "src-git nas_luci https://github.com/linkease/nas-packages-luci.git;main" >> feeds.conf.default
+          echo "src-git istore https://github.com/linkease/istore.git;main" >> feeds.conf.default
+
+      - name: Update feeds
+        run: |
+          cd openwrt
+          ./scripts/feeds update -a
+          ./scripts/feeds install -a
+
+      - name: Load custom script
+        run: |
+          chmod +x diy-part.sh
+          cd openwrt
+          ../diy-part.sh
+
+      - name: Load custom config
+        run: |
+          cp seed.config openwrt/.config
+
+      - name: Defconfig
+        run: |
+          cd openwrt
+          make defconfig
+
+      - name: Download package sources
+        run: |
+          cd openwrt
+          make download -j8
+          find dl -size -1024c -exec rm -f {} \;
+
+      - name: Build firmware
+        run: |
+          cd openwrt
+          make -j$(nproc) || make -j1 V=s
+
+      - name: Upload firmware
+        uses: actions/upload-artifact@v4
+        with:
+          name: immortalwrt-r66s-firmware
+          path: openwrt/bin/targets/**
